@@ -1,0 +1,1224 @@
+#include <SFML/Graphics.hpp>
+#include <SFML/Window.hpp>
+#include <vector>
+#include <functional>
+#include <fstream>
+#include <windows.h>
+
+// Create the window
+sf::RenderWindow window(sf::VideoMode(1180, 900), "Space Shooter");
+
+//Button class
+class Button : public sf::RectangleShape
+{
+public:
+    typedef std::function<void()> funcType;
+    funcType callFunc;
+    sf::Text text;
+    bool pressed = false;
+    bool selected = false;
+    bool textbox = false;
+    Button(sf::Vector2f size, sf::Vector2f pos, std::string string, sf::Font &font, int fontSize) : sf::RectangleShape(size)
+    {
+        setPosition(pos);
+        setFillColor(sf::Color::Black);
+        setOutlineColor(sf::Color::White);
+        setOutlineThickness(5);
+        text.setCharacterSize(fontSize);
+        text.setFont(font);
+        text.setString(string);
+        text.setPosition(getPosition().x + getGlobalBounds().width / 2 - text.getGlobalBounds().width / 2, getPosition().y + getGlobalBounds().height / 2 - text.getGlobalBounds().height / 2 - 20);
+
+    }
+    Button() : sf::RectangleShape()
+    {
+
+    }
+    ~Button()
+    {
+
+    }
+    void setString(std::string str)
+    {
+        text.setString(str);
+        text.setPosition(getPosition().x + getGlobalBounds().width / 2 - text.getGlobalBounds().width / 2, getPosition().y + getGlobalBounds().height / 2 - text.getGlobalBounds().height / 2 - 20);
+
+    }
+    void setFunc(funcType func)
+    {
+        callFunc=func;
+    }
+    void update(sf::RenderWindow& window, sf::Event event)
+    {
+        if(event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left)
+        {
+            pressed = false;
+        }
+        if (getGlobalBounds().contains(sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y))
+        {
+            setFillColor(sf::Color::White);
+            text.setFillColor(sf::Color::Black);
+            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left && callFunc && !pressed)
+            {
+                pressed = true;
+                selected = true;
+                callFunc();
+            }
+        }
+        else
+        {
+            if ((event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left)|| sf::Keyboard::isKeyPressed(sf::Keyboard::Return))
+            {
+                selected = false;
+            }
+            if(selected && textbox)
+            {
+                setFillColor(sf::Color::White);
+                text.setFillColor(sf::Color::Black);
+            }
+            else
+            {
+                setFillColor(sf::Color::Black);
+                text.setFillColor(sf::Color::White);
+            }
+
+        }
+    }
+};
+
+//Particle class
+class Particle
+{
+public:
+    Particle(sf::Vector2f position, float size, sf::Vector2f speed, sf::Color color, int fadespeed, int glow)
+    {
+        shape.setSize(sf::Vector2f(size,size));
+        shape.setPosition(position);
+        shape.setFillColor(color);
+        this->fadespeed = fadespeed;
+        this->color = color;
+        this->speed = speed;
+        this->glow = glow;
+    }
+
+    void update(float dt)
+    {
+        shape.move(speed.x * dt, speed.y * dt);
+        shape.setFillColor(color);
+        if (shape.getPosition().y > window.getSize().y)
+            shape.setPosition(shape.getPosition().x, -10);
+        if (color.a > fadespeed)
+            color.a -= fadespeed;
+        else
+            color.a = 0;
+        if (glow != 0)
+        {
+            if (color.a == 0)
+                increase = true;
+            if (color.a == 255)
+                increase = false;
+            if (increase)
+            {
+                if (color.a + glow > 255)
+                    color.a = 255;
+                else
+                    color.a += glow;
+            }
+            else
+            {
+                if (color.a - glow < 0)
+                    color.a = 0;
+                else
+                    color.a -= glow;
+            }
+
+        }
+    }
+    sf::RectangleShape shape;
+    sf::Vector2f speed;
+    sf::Color color;
+    int fadespeed, glow = 0;
+    bool increase = false;
+};
+
+//Particle system class
+class ParticleSystem
+{
+public:
+    ParticleSystem(int num_particles)
+    {
+        m_particles.reserve(num_particles);
+        for (int i = 0; i < num_particles; ++i)
+        {
+            float x = (rand() % window.getSize().x);
+            float y = (rand() % window.getSize().y);
+            float size = (rand() % 4 + 1);
+            sf::Vector2f speed = sf::Vector2f(0, rand() % 50 + 50);
+            sf::Color color(255, 255, 255, rand() % 255);
+            m_particles.emplace_back(sf::Vector2f(x, y), size, speed, color, 0, 7);
+        }
+    }
+
+    void update(float dt)
+    {
+        for (auto& p : m_particles)
+            p.update(dt);
+    }
+
+    void draw(sf::RenderTarget& target, sf::RenderStates states) const
+    {
+        for (const auto& p : m_particles)
+            target.draw(p.shape, states);
+    }
+
+private:
+    std::vector<Particle> m_particles;
+};
+
+class DeathParticles
+{
+public:
+    std::vector <Particle> particles;
+    int num_particles = 15, fadespeed = 10;
+    DeathParticles()
+    {
+
+    }
+    void add(sf::Vector2f pos, sf::Color color)
+    {
+        for (int i = 0; i < num_particles; ++i)
+        {
+            float size = (rand() % 7 + 1);
+            sf::Vector2f speed = sf::Vector2f(rand()%20 -10, rand()%20 -10);
+            color.a = rand() % 200;
+            Particle particle(pos, size, speed, color, fadespeed, 0);
+            particles.push_back(particle);
+        }
+    }
+    void update()
+    {
+        for (int i = particles.size() - 1; i >= 0; i--)
+        {
+            particles[i].update(0.2);
+            if (particles[i].color.a == 0)
+            {
+                particles.erase(particles.begin() + i);
+            }
+        }
+
+    }
+    void draw(sf::RenderTarget& target, sf::RenderStates states) const
+    {
+        for (const auto& p : particles)
+            target.draw(p.shape, states);
+    }
+
+};
+DeathParticles deathParticles;
+int enemyWidth = 49;
+int enemyHeight = 39;
+
+// Create a vector to store the enemies
+sf::Texture enemyTexture;
+sf::Texture enemyTexture2;
+sf::Texture bunkerTexture;
+
+sf::Vector2u size = window.getSize();
+unsigned int width = size.x;
+unsigned int height = size.y;
+//enemy spawner
+
+// Create the spaceship sprite
+sf::Texture spaceshipTexture;
+
+// Create a vector to hold the bullets
+std::vector<sf::Sprite> bullets;
+sf::Texture bulletTexture;
+
+// Create a variable to keep track of whether space is pressed
+bool spacePressed = false;
+
+//Constants
+float enemySpeed = 30.0f;
+float enemyProjectileSpeed = 8.0f;
+float playerSpeed = 5.0f;
+float playerProjectileSpeed = 20.0f;
+float bulletReloadSpeed = 0.7f;
+float enemyMoveTimer = 0.8f;
+int chanceToShoot = 1000;
+int chanceForSpecial = 30;
+
+
+//Create enemy projectile stuff
+sf::Texture enemyProjectileTexture;
+std::vector<sf::Sprite> enemyProjectiles;
+
+// Create a clock to control enemy spawning and bullets
+sf::Clock enemySpawnClock;
+sf::Clock enemyProjectileClock;
+sf::Clock bulletClock;
+
+//Create death screen
+sf::RectangleShape deathscreen;
+sf::Text deathText;
+sf::Text deathText2;
+sf::Text deathText3;
+
+
+// Create a text object for the scoreboard
+sf::Text scoreText;
+sf::Font font;
+int score = 0;
+int highscore;
+std::string STATE = "START";
+
+//Create event object
+sf::Event event;
+
+//create death button, start button
+const int buttonW = 200;
+const int buttonH = 100;
+const int buttonNum = 3;
+Button Dbutton;
+Button Sbutton;
+Button Hbutton;
+Button Mbutton;
+Button Pbutton;
+Button Lbutton;
+//Particle stuff
+sf::Clock Pclock;
+ParticleSystem particle_system(150);
+
+//Create text for start menu
+sf::Text Stext;
+
+//Menu box
+sf::RectangleShape menuBox;
+typedef std::function<void()> funcType;
+void died();
+void leaderboard();
+int min(int a,int b)
+{
+    if(a<=b)
+        return a;
+    else return b;
+}
+void reset_difficulty()
+{
+    enemySpeed = 30.0f;
+    enemyProjectileSpeed = 8.0f;
+    playerSpeed = 5.0f;
+    playerProjectileSpeed = 20.0f;
+    bulletReloadSpeed = 0.7f;
+    enemyMoveTimer = 0.8f;
+    chanceToShoot = 1000;
+    chanceForSpecial = 30;
+}
+void increase_difficulty()
+{
+    enemySpeed = enemySpeed * 115/100;
+    enemyMoveTimer = enemyMoveTimer * 85 / 100;
+    enemyProjectileSpeed = enemyProjectileSpeed *105/100;
+    chanceToShoot = chanceToShoot * 85/100;
+    bulletReloadSpeed = bulletReloadSpeed * 85/100;
+
+}
+class Enemy
+{
+public:
+    sf::Sprite sp;
+    sf::Clock animClock;
+    Enemy()
+    {
+        sp.setTexture(enemyTexture);
+    }
+    void update()
+    {
+        if(animClock.getElapsedTime().asSeconds() >= 0.5f)
+            sp.setTexture(enemyTexture);
+    }
+    void change()
+    {
+        sp.setTexture(enemyTexture2);
+        animClock.restart();
+    }
+};
+class enemySpawner
+{
+public:
+    std::vector <Enemy> enemies;
+    sf::Clock moveClock;
+    int eWidth, eHeight, spaceBetween = 20, enemiesPerRow = 10, rows = 5, i,j, direction = 1,m;
+    int offsetX,offsetY,a,b, speedUp = 100;
+    float effMoveTimer;
+    std::string state;
+
+    enemySpawner()
+    {
+
+    }
+    void restart()
+    {
+        Enemy enemy;
+        enemies.clear();
+        effMoveTimer = enemyMoveTimer;
+        speedUp = 100;
+        eWidth = enemiesPerRow * enemyWidth + (enemiesPerRow - 1) * spaceBetween;
+        eHeight = rows * enemyHeight + (rows-1) * spaceBetween;
+        offsetX = width / 2 - eWidth / 2;
+        offsetY = -eHeight;
+        m=0;
+        state = "MOVE SIDE";
+        for (i = 1; i <= rows; i++)
+        {
+            for (j = 1; j <= enemiesPerRow; j++)
+            {
+                enemy.sp.setPosition((j - 1) * enemyWidth + (j - 1) * spaceBetween + offsetX, (i - 1) * enemyHeight + (i - 1) * spaceBetween +offsetY);
+                enemies.push_back(enemy);
+            }
+        }
+    }
+    void update()
+    {
+        //moving
+        bool changed=false;
+        effMoveTimer = enemyMoveTimer * speedUp/100;
+        if (moveClock.getElapsedTime().asSeconds() >= effMoveTimer)
+        {
+            moveClock.restart();
+            for (i = 0; i < enemies.size(); i++)
+            {
+                if((enemies[i].sp.getPosition().x + enemyWidth >= width || enemies[i].sp.getPosition().x <= 0) && state!="MOVE DOWN")
+                {
+                    state="MOVE DOWN";
+                    changed=true;
+                    direction *= -1;
+                    break;
+                }
+            }
+            if(!changed)
+                state="MOVE SIDE";
+            if(m<=rows)
+            {
+                for (i = 0; i < enemies.size(); i++)
+                {
+                    enemies[i].sp.move(0, enemyHeight + spaceBetween);
+                }
+                m++;
+            }
+            else
+            {
+                int effSpeed = enemySpeed;
+                if(state=="MOVE SIDE")
+                {
+                    for (i = 0; i < enemies.size(); i++)
+                    {
+                        if(enemies[i].sp.getPosition().x + enemyWidth + enemySpeed * direction > width || direction == 1)
+                            effSpeed = min(effSpeed, width - enemies[i].sp.getPosition().x - enemyWidth);
+                        if(enemies[i].sp.getPosition().x + enemySpeed * direction < 0 || direction == -1)
+                            effSpeed = min(effSpeed, enemies[i].sp.getPosition().x);
+
+                    }
+                }
+                for (i = 0; i < enemies.size(); i++)
+                {
+                    if(state=="MOVE SIDE")
+                    {
+                        enemies[i].sp.move(effSpeed * direction, 0);
+                    }
+
+                    else
+                        enemies[i].sp.move(0, enemyHeight);
+                }
+            }
+        }
+        //shooting
+        a = rand() % chanceToShoot;
+        sf::Sprite enemyProjectile;
+        enemyProjectile.setTexture(enemyProjectileTexture);
+        for (i = 0; i < enemies.size(); i++)
+        {
+            enemies[i].update();
+            b = rand() % chanceToShoot;
+            if(a==b)
+            {
+                enemies[i].change();
+                enemyProjectile.setPosition(enemies[i].sp.getPosition().x + enemyWidth/2, enemies[i].sp.getPosition().y + enemyHeight);
+                enemyProjectiles.push_back(enemyProjectile);
+            }
+        }
+        //
+        if(enemies.empty())
+        {
+            increase_difficulty();
+            restart();
+        }
+
+
+    }
+    void draw(sf::RenderTarget& window)
+    {
+        for (i = 0; i < enemies.size(); i++)
+        {
+            window.draw(enemies[i].sp);
+        }
+    }
+
+};
+enemySpawner enemies;
+class Player
+{
+public:
+    sf::Sprite spaceship;
+    bool spacePressed = false;
+    void update()
+    {
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) && spaceship.getPosition().x > 0)
+            spaceship.move(-playerSpeed, 0);
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) && spaceship.getPosition().x < width - spaceship.getLocalBounds().width)
+            spaceship.move(playerSpeed, 0);
+
+        // Shoot bullets
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && !spacePressed && bulletClock.getElapsedTime().asSeconds() >= bulletReloadSpeed)
+        {
+            shoot();
+            spacePressed = false;
+        }
+        if (!sf::Keyboard::isKeyPressed(sf::Keyboard::Space))
+        {
+            spacePressed = false;
+        }
+    }
+    void shoot()
+    {
+        bulletClock.restart();
+        sf::Sprite bullet(bulletTexture);
+        bullet.setPosition(spaceship.getPosition().x + spaceship.getLocalBounds().width / 2 - bullet.getLocalBounds().width / 2, spaceship.getPosition().y);
+        bullets.push_back(bullet);
+    }
+};
+class BunkerManager
+{
+public:
+    struct bunkerType
+    {
+        sf::Sprite sp;
+        int direction;
+    };
+    bunkerType bunker;
+    std::vector<bunkerType> bunkers;
+    int bunkerLine = height - 200, bunkerNum = 2, spaceBetween;
+    float bunkerSpeed = 0.5f;
+    void init()
+    {
+        bunkers.clear();
+        bunker.sp.setTexture(bunkerTexture);
+        bunker.direction = 1;
+        spaceBetween = (width - bunkerNum * bunker.sp.getLocalBounds().width) / (bunkerNum + 1);
+        for (int i = 1; i <= bunkerNum; i++)
+        {
+            bunker.sp.setPosition(i * spaceBetween + (i - 1) * bunker.sp.getLocalBounds().width, bunkerLine);
+            bunkers.push_back(bunker);
+        }
+        bunkers[0].direction = -1;
+    }
+    void update()
+    {
+        //moving
+        for (int i = 0; i < bunkers.size(); i++)
+        {
+            bunkers[i].sp.move(bunkerSpeed * bunkers[i].direction, 0);
+            //coll with wall
+            if (bunkers[i].sp.getPosition().x <= 0 || bunkers[i].sp.getPosition().x + bunkers[i].sp.getLocalBounds().width >= width)
+                bunkers[i].direction *= -1;
+            //coll with others
+            for (int j = i + 1; j < bunkers.size(); j++)
+            {
+                if (bunkers[i].sp.getGlobalBounds().intersects(bunkers[j].sp.getGlobalBounds()))
+                {
+                    bunkers[i].direction *= -1;
+                    bunkers[j].direction *= -1;
+                }
+            }
+            //coll with bullets
+            for (int j = enemyProjectiles.size() - 1; j >= 0; j--)
+            {
+                if (bunkers[i].sp.getGlobalBounds().intersects(enemyProjectiles[j].getGlobalBounds()))
+                {
+                    deathParticles.add(sf::Vector2f(enemyProjectiles[j].getPosition().x, enemyProjectiles[j].getPosition().y), sf::Color::Red);
+                    enemyProjectiles.erase(enemyProjectiles.begin() + j);
+
+                }
+            }
+            for (int j = bullets.size() - 1; j >= 0; j--)
+            {
+                if (bunkers[i].sp.getGlobalBounds().intersects(bullets[j].getGlobalBounds()))
+                {
+                    deathParticles.add(sf::Vector2f(bullets[j].getPosition().x, bullets[j].getPosition().y + bullets[j].getLocalBounds().height / 2), sf::Color::Blue);
+                    bullets.erase(bullets.begin() + j);
+
+                }
+            }
+            //coll with enemies
+            for (int j = enemies.enemies.size() - 1; j >= 0; j--)
+            {
+                if (bunkers[i].sp.getGlobalBounds().intersects(enemies.enemies[j].sp.getGlobalBounds()))
+                {
+                    died();
+                }
+            }
+        }
+    }
+    void draw(sf::RenderTarget& window)
+    {
+        for (int i = 0; i < bunkers.size(); i++)
+        {
+            window.draw(bunkers[i].sp);
+        }
+    }
+};
+
+class LeaderboardManager
+{
+public:
+    struct User
+    {
+        std::string name;
+        int score;
+    };
+    std::vector<User> users;
+    User user;
+    int userNum = 0, currUserId = 1, posX, posY, spaceBetween = 20, bH= 50, bW = 200, oWidth, oHeight;
+    Button b1, b2, addB, nameBox, remB;
+    void add()
+    {
+        userNum++;
+        user.name = "unnamed";
+        user.score = 0;
+        users.push_back(user);
+        currUserId = userNum;
+    }
+    void init()
+    {
+        oWidth = 2 * bH + 2* spaceBetween + bW;
+        oHeight = 2 * bH + spaceBetween;
+        posX = width / 2 - oWidth/2;
+        posY = menuBox.getPosition().y + menuBox.getGlobalBounds().height + 50;
+        Button aux1(sf::Vector2f(bH, bH), sf::Vector2f(posX, posY), "<-", font, 30);
+        Button aux2(sf::Vector2f(bH, bH), sf::Vector2f(posX + bH + 2*spaceBetween + bW, posY), "->", font, 30);
+        Button aux3(sf::Vector2f(bH + 20, bH), sf::Vector2f(posX + oWidth / 2 - (bH + 20 + bW + spaceBetween)/2, posY + bH + spaceBetween), "add", font, 30);
+        Button aux4(sf::Vector2f(bW, bH), sf::Vector2f(posX + bH + spaceBetween, posY), "namebox", font, 30);
+        Button aux5(sf::Vector2f(bW, bH), sf::Vector2f(aux3.getPosition().x + bH + 20 + spaceBetween, posY + bH + spaceBetween), "remove", font, 30);
+        b1 = aux1;
+        b2 = aux2;
+        addB = aux3;
+        nameBox = aux4;
+        nameBox.textbox = true;
+        remB = aux5;
+    }
+    void loadFromFile()
+    {
+        std::ifstream fin("Resources/leaderboard.txt");
+
+        if(fin >> userNum)
+        {
+            for (int i = 1; i <= userNum; i++)
+            {
+                fin >> user.name;
+                fin >> user.score;
+                users.push_back(user);
+            }
+        }
+        else
+        {
+            userNum=0;
+        }
+        fin.close();
+    }
+    void update()
+    {
+        b1.update(window, event);
+        b2.update(window, event);
+        addB.update(window,event);
+        remB.update(window,event);
+        nameBox.update(window, event);
+        if(users.empty())
+        {
+            nameBox.setString("no users");
+            nameBox.selected = false;
+        }
+
+        else
+        {
+            nameBox.setString(std::to_string(currUserId) + ". " + users[currUserId - 1].name);
+            highscore = users[currUserId - 1].score;
+        }
+    }
+    void update_score(int score)
+    {
+        if (score > users[currUserId - 1].score)
+            users[currUserId - 1].score = score;
+    }
+    void update_highscore()
+    {
+        highscore = 0;
+        if(!users.empty())
+            highscore = users[currUserId - 1].score;
+        deathText3.setString("HIGHSCORE: " + std::to_string(highscore));
+        deathText3.setPosition(width / 2 - deathText3.getLocalBounds().width / 2, deathText2.getPosition().y + 50);
+    }
+    void output()
+    {
+        std::ofstream fout("Resources/leaderboard.txt");
+        fout << userNum << "\n";
+        for (int i = 1; i <= userNum; i++)
+        {
+            fout << users[i-1].name << "\n";
+            fout << users[i-1].score << "\n";
+        }
+        fout.close();
+    }
+    void draw(sf::RenderTarget& window)
+    {
+        window.draw(b1);
+        window.draw(b1.text);
+        window.draw(b2);
+        window.draw(b2.text);
+        window.draw(addB);
+        window.draw(addB.text);
+        window.draw(nameBox);
+        window.draw(nameBox.text);
+        window.draw(remB);
+        window.draw(remB.text);
+
+    }
+};
+LeaderboardManager leaderboardManager;
+void left()
+{
+    if(leaderboardManager.currUserId>1)
+        leaderboardManager.currUserId--;
+}
+void right()
+{
+    if(leaderboardManager.currUserId<leaderboardManager.userNum)
+        leaderboardManager.currUserId ++;
+}
+void add_b()
+{
+    leaderboardManager.add();
+}
+void keyboard_input()
+{
+    if(!leaderboardManager.users.empty())
+        leaderboardManager.users[leaderboardManager.currUserId-1].name = "";
+}
+void rem()
+{
+    if(!leaderboardManager.users.empty())
+    {
+        leaderboardManager.users.erase(leaderboardManager.users.begin() + leaderboardManager.currUserId - 1);
+        leaderboardManager.userNum --;
+        if(leaderboardManager.currUserId > leaderboardManager.userNum)
+            leaderboardManager.currUserId = leaderboardManager.userNum;
+    }
+
+}
+Player player;
+BunkerManager bunkers;
+void restart()
+{
+    STATE = "RUN";
+    //clear every enemy and stuff;
+    bullets.clear();
+    enemyProjectiles.clear();
+    enemies.restart();
+    score = 0;
+    reset_difficulty();
+    bunkers.init();
+    //set position back
+    scoreText.setPosition(width / 2 - scoreText.getLocalBounds().width / 2, height - 150);
+    player.spaceship.setPosition(1, height - player.spaceship.getLocalBounds().height - 10);
+}
+void resume()
+{
+    STATE = "RUN";
+    deathText.setString("YOU DIED");
+    deathText.move(0,0);
+    Dbutton.text.setString("Restart");
+    Dbutton.setFunc(restart);
+    scoreText.setPosition(width / 2 - scoreText.getLocalBounds().width / 2, height - 150);
+}
+void pause()
+{
+    STATE = "DEATH";
+    deathText.setString("PAUSED");
+    deathText.move(0,0);
+    Dbutton.text.setString("Resume");
+    Dbutton.setFunc(resume);
+}
+void menu()
+{
+    STATE = "START";
+    leaderboardManager.update_highscore();
+    leaderboardManager.output();
+    sf::Mouse::setPosition(sf::Vector2i(menuBox.getPosition().x, menuBox.getPosition().y), window);
+}
+void help()
+{
+    std::system("start Resources/help.html");
+}
+void init()
+{
+    //Textures init
+    spaceshipTexture.loadFromFile("Resources/spaceship.png");
+    player.spaceship.setTexture(spaceshipTexture);
+    player.spaceship.setPosition(1, height - player.spaceship.getLocalBounds().height - 10);
+    bulletTexture.loadFromFile("Resources/bullet.png");
+    enemyTexture.loadFromFile("Resources/enemy.png");
+    enemyTexture2.loadFromFile("Resources/enemy2.png");
+    enemyProjectileTexture.loadFromFile("Resources/enemyProjectile.png");
+    bunkerTexture.loadFromFile("Resources/bunker.png");
+    //score init
+    font.loadFromFile("Resources/Gamefont.ttf");
+    scoreText.setFont(font);
+    scoreText.setCharacterSize(50);
+    scoreText.setFillColor(sf::Color::White);
+    scoreText.setString("0");
+    scoreText.setPosition(width / 2 - scoreText.getLocalBounds().width / 2, height - 150);
+    //deathscreen init
+    deathscreen.setFillColor(sf::Color::Black);
+    deathscreen.setOutlineColor(sf::Color::White);
+    deathscreen.setOutlineThickness(5);
+    deathscreen.setSize(sf::Vector2f(500, 600));
+    deathscreen.setPosition(width / 2 - deathscreen.getLocalBounds().width / 2, height / 2 - deathscreen.getLocalBounds().height / 2);
+    //Deathscreen text
+    deathText.setFont(font);
+    deathText.setCharacterSize(60);
+    deathText.setFillColor(sf::Color::White);
+    deathText.setString("YOU DIED");
+    deathText.setPosition(width / 2 - deathText.getLocalBounds().width / 2, deathscreen.getPosition().y + 10);
+    deathText2.setFont(font);
+    deathText2.setCharacterSize(40);
+    deathText2.setFillColor(sf::Color::White);
+    deathText2.setString("SCORE: ");
+    deathText2.setPosition(width / 2 - deathText.getLocalBounds().width / 2 + 20, deathText.getPosition().y + 100);
+    deathText3.setFont(font);
+    deathText3.setCharacterSize(40);
+    deathText3.setFillColor(sf::Color::White);
+    //deathscreen button
+    Button auxButton1(sf::Vector2f(buttonW, buttonH), sf::Vector2f(width / 2 - buttonW / 2, deathscreen.getPosition().y + deathscreen.getLocalBounds().height - buttonH - 50), "Restart", font, 30);
+    Dbutton = auxButton1;
+    Dbutton.setFunc(restart);
+    //menu button
+    Button auxButton4(sf::Vector2f(buttonW, buttonH), sf::Vector2f(width / 2 - buttonW / 2, deathscreen.getPosition().y + deathscreen.getLocalBounds().height - buttonH - 100 - buttonH), "Menu", font, 30);
+    Mbutton = auxButton4;
+    Mbutton.setFunc(menu);
+    //MenuBox
+    menuBox.setSize(sf::Vector2f(100 + buttonW, 100 + buttonH * buttonNum + 50 * (buttonNum - 1)));
+    menuBox.setPosition(sf::Vector2f(width / 2 - menuBox.getLocalBounds().width / 2, height / 2 - menuBox.getLocalBounds().height / 2 - 50));
+    menuBox.setFillColor(sf::Color::Black);
+    menuBox.setOutlineColor(sf::Color::White);
+    menuBox.setOutlineThickness(5);
+    //startscreen button
+    Button auxButton2(sf::Vector2f(buttonW, buttonH), sf::Vector2f(menuBox.getPosition().x + 50, menuBox.getPosition().y + 50), "Start", font, 30);
+    Sbutton = auxButton2;
+    Sbutton.setFunc(restart);
+    //Help button
+    Button auxButton3(sf::Vector2f(buttonW, buttonH), sf::Vector2f(menuBox.getPosition().x + 50, menuBox.getPosition().y + 100 + buttonH), "Help", font, 30);
+    Hbutton = auxButton3;
+    Hbutton.setFunc(help);
+    //leaderboard button
+    Button auxButton6(sf::Vector2f(buttonW, buttonH), sf::Vector2f(menuBox.getPosition().x + 50, menuBox.getPosition().y + 150 + 2*buttonH), "Leaderboard", font, 25);
+    Lbutton = auxButton6;
+    Lbutton.setFunc(leaderboard);
+    //Pause button
+    Button auxButton5(sf::Vector2f(50, 50), sf::Vector2f(width - 70, 20), "| |", font, 30);
+    auxButton5.text.setOutlineThickness(3);
+    Pbutton = auxButton5;
+    Pbutton.setFunc(pause);
+    //Start menu text
+    Stext.setFont(font);
+    Stext.setCharacterSize(80);
+    Stext.setFillColor(sf::Color::White);
+    Stext.setString("SPACE SHOOTER");
+    Stext.setPosition(width / 2 - Stext.getGlobalBounds().width / 2, 20);
+    //leaderboard
+    leaderboardManager.init();
+    leaderboardManager.loadFromFile();
+    leaderboardManager.b1.setFunc(left);
+    leaderboardManager.b2.setFunc(right);
+    leaderboardManager.addB.setFunc(add_b);
+    leaderboardManager.nameBox.setFunc(keyboard_input);
+    leaderboardManager.remB.setFunc(rem);
+    //textbox
+}
+void gameloop()
+{
+    deathParticles.update();
+    enemies.update();
+    bunkers.update();
+    //Move/destroy enemy projectiles
+    for (int i = enemyProjectiles.size() - 1; i >= 0; i--)
+    {
+        if (enemyProjectiles[i].getPosition().y > height)
+            enemyProjectiles.erase(enemyProjectiles.begin() + i);
+        else
+        {
+            enemyProjectiles[i].move(0, enemyProjectileSpeed);
+            //collision with player
+            if (enemyProjectiles[i].getGlobalBounds().intersects(player.spaceship.getGlobalBounds()))
+            {
+                died();
+            }
+        }
+    }
+    //Collision between enemy and bullets
+    for (int i = bullets.size() - 1; i >= 0; i--)
+    {
+        for (int j = enemies.enemies.size() - 1; j >= 0 and i>=0; j--)
+        {
+            if (bullets[i].getGlobalBounds().intersects(enemies.enemies[j].sp.getGlobalBounds()))
+            {
+                // Remove the bullet and enemy
+                deathParticles.add(sf::Vector2f(bullets[i].getPosition().x, bullets[i].getPosition().y + bullets[i].getLocalBounds().height / 2), sf::Color::Blue);
+                deathParticles.add(sf::Vector2f(enemies.enemies[j].sp.getPosition().x + enemies.enemies[j].sp.getLocalBounds().width / 2, enemies.enemies[j].sp.getPosition().y + enemies.enemies[j].sp.getLocalBounds().height / 2), sf::Color::White);
+                bullets.erase(bullets.begin() + i);
+                i--;
+                enemies.speedUp--;
+                enemies.enemies.erase(enemies.enemies.begin() + j);
+                score++;
+            }
+        }
+    }
+    // Move the spaceship
+    player.update();
+
+    // Move the bullets
+    for (int i = bullets.size() -1; i >= 0; i--)
+    {
+        bullets[i].move(0, -playerProjectileSpeed); // move the bullet up
+        if (bullets[i].getPosition().y < 0) // remove the bullet if it goes off-screen
+            bullets.erase(bullets.begin() + i);
+    }
+    scoreText.setString(std::to_string(score));
+    Pbutton.update(window, event);
+}
+void start()
+{
+    Sbutton.update(window, event);
+    Hbutton.update(window, event);
+    Lbutton.update(window, event);
+    leaderboardManager.update();
+}
+void death()
+{
+    scoreText.setPosition(deathText2.getPosition().x + deathText2.getLocalBounds().width + 20, deathText.getPosition().y + 90);
+    Dbutton.update(window, event);
+    Mbutton.update(window, event);
+    leaderboardManager.update_highscore();
+}
+void leaderboard()
+{
+    wchar_t originalDirectory[MAX_PATH];
+    GetCurrentDirectory(MAX_PATH, originalDirectory);
+    SetCurrentDirectory(L".\\Resources");
+    std::system("start server.exe");
+    SetCurrentDirectory(originalDirectory);
+}
+void died()
+{
+    STATE = "DEATH";
+    leaderboardManager.update_score(score);
+}
+void pollEvent()
+{
+    // Handle events
+    while (window.pollEvent(event))
+    {
+        if (event.type == sf::Event::Closed)
+        {
+            leaderboardManager.output();
+            window.close();
+        }
+        if(event.type == sf::Event::TextEntered)
+        {
+            if(leaderboardManager.nameBox.selected && !leaderboardManager.users.empty())
+            {
+                if((event.text.unicode >= 65 && event.text.unicode <=90) || (event.text.unicode >=97 && event.text.unicode <=122))
+                    leaderboardManager.users[leaderboardManager.currUserId-1].name += event.text.unicode;
+                else if(event.text.unicode == 8)
+                {
+                    if (!leaderboardManager.users[leaderboardManager.currUserId-1].name.empty()) {
+                        leaderboardManager.users[leaderboardManager.currUserId-1].name.pop_back();
+                    }
+                }
+            }
+        }
+    }
+}
+void draw_function()
+{
+    window.clear(sf::Color::Black);
+    particle_system.draw(window, sf::RenderStates::Default);
+    //gameloop stuff
+    if(STATE !="START")
+    {
+        deathParticles.draw(window, sf::RenderStates::Default);
+        window.draw(scoreText);
+        for (int i = 0; i < bullets.size(); i++)
+            window.draw(bullets[i]);
+        for (int i = 0; i < enemyProjectiles.size(); i++)
+            window.draw(enemyProjectiles[i]);
+        enemies.draw(window);
+        window.draw(player.spaceship);
+        bunkers.draw(window);
+        window.draw(Pbutton);
+        window.draw(Pbutton.text);
+
+
+    }
+    //death screen
+    if (STATE == "DEATH")
+    {
+        window.draw(deathscreen);
+        window.draw(deathText);
+        window.draw(deathText2);
+        window.draw(deathText3);
+        window.draw(scoreText);
+        window.draw(Dbutton);
+        window.draw(Dbutton.text);
+        window.draw(Mbutton);
+        window.draw(Mbutton.text);
+    }
+    if (STATE == "START")
+    {
+        window.draw(menuBox);
+        leaderboardManager.draw(window);
+        window.draw(Stext);
+        window.draw(Sbutton);
+        window.draw(Sbutton.text);
+        window.draw(Hbutton);
+        window.draw(Hbutton.text);
+        window.draw(Lbutton);
+        window.draw(Lbutton.text);
+
+    }
+    //Start screen
+
+    window.display();
+}
+int main()
+{
+    window.setFramerateLimit(60);
+    init();
+    bunkers.init();
+    enemies.restart();
+    // Game loop
+    while (window.isOpen())
+    {
+        pollEvent();
+        particle_system.update(Pclock.restart().asSeconds());
+        if (STATE == "RUN")
+        {
+            gameloop();
+        }
+        if (STATE == "START")
+        {
+            start();
+        }
+        if (STATE == "DEATH")
+        {
+            death();
+        }
+        draw_function();
+    }
+
+    return 0;
+}
+//python server code
+import http.server
+import webbrowser
+
+class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        super().end_headers()
+
+if __name__ == '__main__':
+    address = ('localhost', 8000)
+    server = http.server.HTTPServer(address, MyHTTPRequestHandler)
+    webbrowser.open("http://localhost:8000/leaderboard.html")
+    server.serve_forever()
+//html code
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaderboard</title>
+    <style>
+    body {
+        background-image: url('background.jpg');
+        background-size: cover;
+    }
+
+    .leaderboard {
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 300px;
+        margin: 20px auto;
+        font-family: Arial, sans-serif;
+        background-color: black;
+        color: white;
+    }
+
+    .leaderboard h1 {
+        text-align: center;
+    }
+
+    .leaderboard ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .leaderboard li {
+        padding: 5px;
+    }
+</style>
+</head>
+<body>
+    <div class="leaderboard">
+        <h1>Leaderboard</h1>
+        <ul id="leaderboard-list"></ul>
+    </div>
+
+    <script>
+    // Function to load the leaderboard data from file
+    function loadLeaderboard() {
+        fetch('leaderboard.txt')
+            .then(response => response.text())
+            .then(data => {
+                const leaderboardData = data.trim().split('\n');
+                const numUsers = parseInt(leaderboardData[0]);
+                const leaderboardList = document.getElementById('leaderboard-list');
+
+                // Clear existing list items
+                leaderboardList.innerHTML = '';
+
+                // Create an array of leaderboard items
+                const leaderboardItems = [];
+
+                for (let i = 0; i < numUsers; i++) {
+                    const username = leaderboardData[i * 2 + 1].trim();
+                    const score = leaderboardData[i * 2 + 2].trim();
+
+                    leaderboardItems.push({ username, score });
+                }
+
+                // Sort leaderboard items by score (descending order)
+                leaderboardItems.sort((a, b) => b.score - a.score);
+
+                // Append sorted leaderboard items to the list
+                leaderboardItems.forEach(item => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = `${item.username} - ${item.score}`;
+                    leaderboardList.appendChild(listItem);
+                });
+            })
+            .catch(error => {
+                console.log('Error loading leaderboard:', error);
+            });
+    }
+
+    // Call the loadLeaderboard function when the page is loaded
+    document.addEventListener('DOMContentLoaded', loadLeaderboard);
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html>
+<head>
+	<title>SPACE SHOOTER - Controls and Rules</title>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		body {
+			background-image: url(background.jpg);
+			background-size: cover;
+			background-repeat: no-repeat;
+			background-position: center;
+			margin: 0;
+			padding: 0;
+		}
+		.container {
+			background-color: black;
+			border: 2px solid white;
+			color: white;
+			font-family: Arial, sans-serif;
+			font-size: 18px;
+			margin: 50px auto;
+			max-width: 800px;
+			padding: 20px;
+		}
+		h1 {
+			font-size: 32px;
+			margin-top: 0;
+			text-align: center;
+		}
+		h2 {
+			font-size: 24px;
+			margin-top: 30px;
+		}
+		.rules {
+			margin-top: 50px;
+		}
+		.controls {
+			margin-top: 50px;
+		}
+		ul {
+			list-style-type: none;
+			margin: 0;
+			padding: 0;
+		}
+		li {
+			margin-bottom: 10px;
+		}
+		.gameplay {
+			margin-top: 50px;
+			text-align: center;
+		}
+		.gameplay img {
+			max-width: 100%;
+			height: auto;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>SPACE SHOOTER</h1>
+		<h2>Szabályok</h2>
+		<div class="rules">
+			<ul>
+				<li>A játékos egy űrhajó a képernyő alján, és meg kell állítania a fentről érkező ellenségeket és piros lövedékeiket.</li>
+				<li>Ha az ellenségek elérik az egyik két sárga búnkert, vagy a játékos érinti a piros ellenséges lövedékeket, a játékos veszít.</li>
+				<li>A játékos lövöldözhet az ellenségekre, és minden alkalommal, amikor eltalál egyet, az ellenség meghal, és a játékos pontot kap a pontszámához.</li>
+				<li>Ha az összes ellenség meghalt egy hullámban, akkor új hullám jelenik meg, amelynek gyorsabb ellenségei és lövedékei vannak.</li>
+			</ul>
+		</div>
+		<h2>Irányítás</h2>
+		<div class="controls">
+			<ul>
+				<li>Szóköz - Lövés</li>
+				<li>Balra nyíl - Balra mozgás</li>
+				<li>Jobbra nyíl - Jobbra mozgás</li>
+			</ul>
+		</div>
+	</div>
+	<div class="gameplay">
+		<img src="gameplay.jpg" alt="Gameplay Screenshot">
+	</div>
+</body>
+</html>

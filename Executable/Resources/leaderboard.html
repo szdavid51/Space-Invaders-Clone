@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Leaderboard</title>
+    <style>
+    body {
+        background-image: url('background.jpg');
+        background-size: cover;
+    }
+
+    .leaderboard {
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 300px;
+        margin: 20px auto;
+        font-family: Arial, sans-serif;
+        background-color: black;
+        color: white;
+    }
+
+    .leaderboard h1 {
+        text-align: center;
+    }
+
+    .leaderboard ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .leaderboard li {
+        padding: 5px;
+    }
+</style>
+</head>
+<body>
+    <div class="leaderboard">
+        <h1>Leaderboard</h1>
+        <ul id="leaderboard-list"></ul>
+    </div>
+
+    <script>
+    // Function to load the leaderboard data from file
+    function loadLeaderboard() {
+        fetch('leaderboard.txt')
+            .then(response => response.text())
+            .then(data => {
+                const leaderboardData = data.trim().split('\n');
+                const numUsers = parseInt(leaderboardData[0]);
+                const leaderboardList = document.getElementById('leaderboard-list');
+
+                // Clear existing list items
+                leaderboardList.innerHTML = '';
+
+                // Create an array of leaderboard items
+                const leaderboardItems = [];
+
+                for (let i = 0; i < numUsers; i++) {
+                    const username = leaderboardData[i * 2 + 1].trim();
+                    const score = leaderboardData[i * 2 + 2].trim();
+
+                    leaderboardItems.push({ username, score });
+                }
+
+                // Sort leaderboard items by score (descending order)
+                leaderboardItems.sort((a, b) => b.score - a.score);
+
+                // Append sorted leaderboard items to the list
+                leaderboardItems.forEach(item => {
+                    const listItem = document.createElement('li');
+                    listItem.textContent = `${item.username} - ${item.score}`;
+                    leaderboardList.appendChild(listItem);
+                });
+            })
+            .catch(error => {
+                console.log('Error loading leaderboard:', error);
+            });
+    }
+
+    // Call the loadLeaderboard function when the page is loaded
+    document.addEventListener('DOMContentLoaded', loadLeaderboard);
+</script>
+</body>
+</html>
